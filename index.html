@@ -408,11 +408,14 @@
     <div class="actions">
       <button class="btn" id="copy" type="button">📋 复制文案</button>
       <button class="btn" id="save" type="button">💾 保存图片</button>
-      <button class="btn btn-ember wide" id="douyin" type="button">🎵 打开抖音 · 去这家店</button>
+      <button class="btn btn-ember wide" id="share" type="button">📤 分享图片 + 文案（到抖音 / 相册）</button>
+      <button class="btn wide" id="douyin" type="button">🎵 打开抖音 · 去这家店</button>
     </div>
     <p class="tip">
-      手机上：<b>长按图片保存到相册</b> → 点「打开抖音 · 去这家店」会<b>直达本店团购页</b> → 在店内写评价/发作品时粘贴文案。<br>
-      电脑上：点「保存图片」和「复制文案」，再拿到手机上发。
+      <b>得说清楚</b>：抖音、美团都没有「从外部写入评价」的接口，评价框只能你在 App 里自己填——
+      网页能把<b>图片和文案送到你手机的系统分享面板</b>，但没法替你点进评价页粘贴。<br>
+      手机上最省事的路径：点 <b>📤 分享</b> → 选「抖音」或「存储到相册」→ 文案已在剪贴板 → 回到抖音
+      <b>我 → 订单 → 待评价</b>，长按粘贴。
     </p>
   </div>
 </div>
@@ -882,6 +885,41 @@
     var ok = await copyText(text);
     toast(ok ? "文案已复制，正在打开抖音…" : "正在打开抖音…");
     launchApp("douyin");
+  });
+
+  // 系统分享：把「图片文件 + 文案」交给手机的系统分享面板（抖音 / 微信 / 存相册）
+  // 这是浏览器能做到的最接近「一键带内容进 App」的路径；评价框本身仍无法写入。
+  $("share").addEventListener("click", async function () {
+    var caption = card ? card.caption : buildDouyinCaption();
+    var nav = navigator;
+    // 顺手先把文案放进剪贴板，无论分享成不成功都用得上
+    copyText(caption);
+    var settled = false;
+    var timer = setTimeout(function () {
+      if (!settled) toast("面板没弹出来？文案已复制，图片可长按保存");
+    }, 6000);
+    function done(msg) { settled = true; clearTimeout(timer); if (msg) toast(msg); }
+    function fallback() { done("这台设备不支持系统分享：文案已复制，图片请长按保存"); }
+    toast("正在打开分享面板…");
+    try {
+      if (!nav.share) { fallback(); return; }
+      var file = null;
+      try {
+        var blob = await new Promise(function (res) { $("poster").toBlob(res, "image/jpeg", 0.92); });
+        if (blob) file = new File([blob], "肥鱼烧烤店.jpg", { type: "image/jpeg" });
+      } catch (e) { file = null; }
+      if (file && nav.canShare && nav.canShare({ files: [file] })) {
+        await nav.share({ files: [file], text: caption, title: "肥鱼烧烤店 · 好评分享" });
+        done("已交给系统分享面板");
+        return;
+      }
+      await nav.share({ text: caption, title: "肥鱼烧烤店 · 好评分享" });
+      done("已分享文案");
+    } catch (e) {
+      // 用户取消（AbortError）不算失败
+      if (e && e.name === "AbortError") { done(""); return; }
+      fallback();
+    }
   });
 
   // 美团：复制评价 → 唤起 App
