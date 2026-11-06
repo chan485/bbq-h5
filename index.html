@@ -364,11 +364,11 @@
 
   <section class="card">
     <h2><span class="idx">4</span> 发布</h2>
-    <p class="sub">文案写好了？点平台：文案自动复制、App 自动唤起，进去粘贴就发。</p>
+    <p class="sub">文案写好了？点平台：文案自动复制，抖音会<b>直达本店团购页</b>，进去粘上就能发。</p>
     <div class="direct-grid">
       <button class="direct-btn douyin" id="goDouyin" type="button" aria-label="带着文案去抖音">
         <span class="di" aria-hidden="true">🎵</span>
-        <span><b>发到抖音</b><small>配图卡片 + 文案</small></span>
+        <span><b>发到抖音</b><small>店铺页 · 配图 · 文案</small></span>
       </button>
       <button class="direct-btn meituan" id="goMeituan" type="button" aria-label="带着文案去美团">
         <span class="di" aria-hidden="true">🛵</span>
@@ -408,10 +408,10 @@
     <div class="actions">
       <button class="btn" id="copy" type="button">📋 复制文案</button>
       <button class="btn" id="save" type="button">💾 保存图片</button>
-      <button class="btn btn-ember wide" id="douyin" type="button">🎵 打开抖音去发布</button>
+      <button class="btn btn-ember wide" id="douyin" type="button">🎵 打开抖音 · 去这家店</button>
     </div>
     <p class="tip">
-      手机上：<b>长按图片保存到相册</b> → 点「打开抖音」→ ＋ → 上传这张图 → 粘贴文案 → 发布。<br>
+      手机上：<b>长按图片保存到相册</b> → 点「打开抖音 · 去这家店」会<b>直达本店团购页</b> → 在店内写评价/发作品时粘贴文案。<br>
       电脑上：点「保存图片」和「复制文案」，再拿到手机上发。
     </p>
   </div>
@@ -893,10 +893,14 @@
     launchApp("meituan");
   });
 
-  /* ── 平台跳转：Android 用 intent://，iOS 用 scheme ── */
+  /* ── 平台跳转：有店铺直达链接就直达，没有就退到 App 首页 ── */
   var PLATFORM = {
     douyin: {
       name: "抖音",
+      // 抖音生活服务·店铺（团购）页的分享短链，装着 App 时由系统直接唤起并落到这家店
+      // 实测解析：302 → aweme.snssdk.com/falcon/poi_mwa/poi_detail?poi_id=7633886116541630498&biz_code=food
+      shop: "https://v.douyin.com/HWl4RF_CwJQ/",
+      poiId: "7633886116541630498",
       ios: "snssdk1128://",
       android: "intent://www.douyin.com/#Intent;scheme=snssdk1128;package=com.ss.android.ugc.aweme;end",
       web: "https://www.douyin.com/",
@@ -906,6 +910,8 @@
     },
     meituan: {
       name: "美团",
+      // 待填：美团店铺页分享链接（形如 https://i.meituan.com/... ），填上后同样直达店铺
+      shop: "",
       ios: "imeituan://www.meituan.com/",
       android: "intent://www.meituan.com/#Intent;scheme=imeituan;package=com.sankuai.meituan;end",
       web: "https://www.meituan.com/",
@@ -933,6 +939,24 @@
     var p = PLATFORM[key];
     var u = uaInfo();
     lastLaunch = key;
+
+    // ① 有店铺直达链接：优先用它——装着 App 就由系统唤起并落到这家店，没装则落 H5 页
+    if (p.shop) {
+      if (!u.mobile) {
+        toast("已打开「" + p.name + "」店铺页面（网页版）");
+        window.open(p.shop, "_blank", "noopener");
+        return;
+      }
+      if (u.wechat) { showHelper(key, true); return; }
+      hideHelper();
+      toast("正在打开「" + p.name + "」店铺…");
+      try { window.location.href = p.shop; } catch (e) { window.location.href = p.shop; }
+      setTimeout(function () {
+        if (document.visibilityState === "visible") showHelper(key, false);
+      }, 2400);
+      return;
+    }
+
     if (!u.mobile) {
       toast("电脑上唤不起「" + p.name + "」App，已打开网页版");
       window.open(p.web, "_blank", "noopener");
