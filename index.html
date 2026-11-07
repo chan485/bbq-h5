@@ -317,6 +317,32 @@
   .share-help .sh-title { margin: 0 0 6px; font-size: 13.5px; font-weight: 700; color: #ffd6b3; }
   .share-help .sh-sub { margin: 0 0 10px; font-size: 12.5px; line-height: 1.65; color: var(--dim); }
   .sh-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  /* 图片 + 长按提示 */
+  .poster-wrap { position: relative; }
+  .poster-wrap .img-hint {
+    position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+    font-size: 11.5px; color: #2a0d02; background: rgba(255, 214, 179, .95);
+    padding: 4px 11px; border-radius: 999px; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .35); pointer-events: none;
+  }
+  /* 微信提示条 */
+  .wx-banner {
+    margin-top: 12px; padding: 10px 12px; border-radius: 12px; font-size: 12.5px; line-height: 1.65;
+    background: rgba(61, 220, 151, .1); border: 1px solid rgba(61, 220, 151, .34); color: #b8f5d9;
+  }
+  .wx-banner b { color: #eafff5; }
+  /* 手动复制兜底 */
+  .manual { margin-top: 12px; padding: 12px; border-radius: 12px;
+            background: rgba(0, 0, 0, .32); border: 1px dashed rgba(255, 170, 110, .38); }
+  .manual .manual-tip { margin: 0 0 8px; font-size: 12.5px; line-height: 1.65; color: var(--dim); }
+  .manual .manual-tip b { color: #ffd6b3; }
+  .manual textarea {
+    width: 100%; min-height: 92px; resize: vertical; font: inherit; font-size: 13px; line-height: 1.7;
+    color: var(--cream); background: rgba(255, 255, 255, .06);
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; outline: none;
+    -webkit-user-select: text; user-select: text;
+  }
+  .manual .btn { width: 100%; margin-top: 8px; padding: 11px; font-size: 13.5px; }
   .tip { font-size: 11.5px; color: var(--faint); margin: 12px 2px 0; line-height: 1.65; }
   .tip b { color: #ffb98f; font-weight: 600; }
 
@@ -418,7 +444,13 @@
       <button class="x-btn" id="closeModal" type="button" aria-label="关闭">✕</button>
     </div>
     <canvas id="poster" width="1080" height="1350" hidden></canvas>
-    <img id="posterImg" alt="肥鱼烧烤店分享卡片">
+    <div class="poster-wrap">
+      <img id="posterImg" alt="肥鱼烧烤店分享卡片">
+      <span class="img-hint">长按图片 → 存储到相册</span>
+    </div>
+    <div class="wx-banner" id="wxBanner" hidden>
+      <b>你在微信里打开</b>，微信会拦掉复制和保存。请点右上角 <b>···</b> → <b>在浏览器中打开</b>，再回来操作。
+    </div>
     <div class="actions">
       <button class="btn" id="copy" type="button">📋 复制文案</button>
       <button class="btn" id="save" type="button">💾 保存图片</button>
@@ -426,6 +458,11 @@
       <button class="btn wide" id="douyin" type="button">🎵 打开抖音 · 去这家店</button>
     </div>
     <p class="share-status" id="shareStatus" hidden></p>
+    <div class="manual" id="manualBox" hidden>
+      <p class="manual-tip">复制按钮被拦了？用这条最稳的路：<b>长按下面的文字 → 全选 → 复制</b>，再去抖音评价框长按粘贴。</p>
+      <textarea id="manualText" readonly rows="4"></textarea>
+      <button class="btn" id="manualSelect" type="button">全选这段文字</button>
+    </div>
     <div class="share-help" id="shareHelp" hidden>
       <p class="sh-title" id="shTitle"></p>
       <p class="sh-sub" id="shSub"></p>
@@ -872,6 +909,26 @@
     setTimeout(function () { btn.classList.remove("done"); b.textContent = prev; }, 2200);
   }
 
+  // 剪贴板被拦时的最终兜底：把文案摊在只读文本框里，让用户长按 → 全选 → 复制。
+  // 这条路不依赖任何 JS 权限，微信/QQ/各种国产浏览器都拦不住。
+  function showManual(text) {
+    var box = $("manualBox");
+    if (!box) return;
+    $("manualText").value = text;
+    box.hidden = false;
+  }
+  function selectManual() {
+    var ta = $("manualText");
+    if (!ta) return;
+    try {
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+    } catch (e) {}
+  }
+  $("manualSelect").addEventListener("click", selectManual);
+  $("manualText").addEventListener("click", selectManual);
+
   // 抖音：复制文案 → 生成配图卡片 → 唤起 App
   $("goDouyin").addEventListener("click", async function () {
     card = { caption: buildDouyinCaption(), blob: null };
@@ -879,6 +936,9 @@
     flashDone($("goDouyin"), ok ? "文案已复制 ✓" : "打开卡片…");
     $("modal").classList.add("on");
     document.body.style.overflow = "hidden";
+    var u0 = uaInfo();
+    $("wxBanner").hidden = !u0.wechat;
+    if (u0.wechat) showManual(card.caption); else $("manualBox").hidden = true;
     $("shareStatus").hidden = true;
     $("shareHelp").hidden = true;
     await drawPoster();
@@ -897,10 +957,21 @@
   $("copy").addEventListener("click", async function () {
     var text = card ? card.caption : buildDouyinCaption();
     var ok = await copyText(text);
-    toast(ok ? "文案已复制，去抖音粘贴" : "复制失败，请手动选中文案");
+    if (ok) {
+      toast("文案已复制，去抖音评价框长按粘贴");
+    } else {
+      showManual(text);
+      toast("这台浏览器不让自动复制，已把文案摊在下面，长按选它");
+    }
   });
 
   $("save").addEventListener("click", function () {
+    var u = uaInfo();
+    // iOS / 微信：<a download> 只会落到"文件"，进不了相册，所以直接引导长按
+    if (u.wechat || u.ios) {
+      toast("请长按上面的图片 → 「存储到相册」");
+      return;
+    }
     try {
       var url = $("poster").toDataURL("image/jpeg", 0.92);
       var a = document.createElement("a");
@@ -909,9 +980,9 @@
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      toast("图片已保存到下载目录");
+      toast("图片已保存到「下载」；进不了相册的话，长按图片选「存储到相册」");
     } catch (e) {
-      toast("保存失败，试试右键图片保存");
+      toast("保存失败，请长按图片选「存储到相册」");
     }
   });
 
@@ -956,7 +1027,8 @@
 
     if (u.wechat) {
       showShareHelp("wechat");
-      setShareStatus("微信内不支持系统分享，按提示在浏览器打开");
+      showManual(caption);
+      setShareStatus("微信内不支持系统分享，用下面的文字手动复制");
       return;
     }
     if (!navigator.share) {
